@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""nightshift CLI —  ./ns <command>"""
+import argparse, json, subprocess, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from nightshift import config, episodes, fleet, store
+
+def cmd_proxy(a):
+    import uvicorn
+    print(f"ingest proxy → {config.UPSTREAM_BASE}\n"
+          f"  export OPENAI_BASE_URL=http://localhost:{a.port}/v1\n"
+          f"  export ANTHROPIC_BASE_URL=http://localhost:{a.port}\n")
+    uvicorn.run("nightshift.proxy:app", host="0.0.0.0", port=a.port, log_level="warning")
+
+def cmd_status(a):
+    from nightshift.dispersed import request
+    s, me = request("GET", "/v1/users/me")
+    print(f"account   : {me.get('email')}  ({s})")
+    s2, b = request("GET", f"/v1/accounts/{me['uuid']}/balance")
+    print(f"balance   : {b.get('available_balance')} {b.get('currency')}")
+    print(f"captured  : {sum(store.stats().values())} calls over {len(store.stats())} day(s)")
+    eps = episodes.collect(limit_sessions=a.limit_sessions or None)
+    print(f"episodes  : {len(eps)} judgeable")
+    runs = [r for r in fleet.all_runs() if r.get("status") in ("RUNNING","PREPARING","ASSIGNED")]
+    print(f"live runs : {len(runs)}")
+    for r in runs:
+        print(f"   {r['uuid'][:8]} {r['status']:<10} ${r.get('hourly_rate_usd')}/hr")
+
+def cmd_run(a):
+    from nightshift.batch import run_batch
+    out = run_batch(fleet_size=a.fleet, limit_episodes=a.limit or None,
+                    limit_sessions=a.limit_sessions or None, keep_alive=a.keep_alive)
+    print(out.get("markdown") or out)
+
+def cmd_report(a):
+    p = config.RUNS / "latest"
+    if not p.exists(): sys.exit("no runs yet")
+    d = Path(p.read_text().strip())
+    print((d / "report.md").read_text())
+    print(f"\nhtml: {d/'report.html'}")
+
+def cmd_kill(a):
+    killed = fleet.reconcile()
+    print(f"cancelled {len(killed)} job(s)" if killed else "nothing running")
+
+def cmd_sched(a):
+    subprocess.run([sys.executable, "-m", "nightshift.scheduler", "--at", a.at])
+
+p = argparse.ArgumentParser(prog="ns", description="nightshift — batch LLM observability on Dispersed")
+sub = p.add_subparsers(dest="cmd", required=True)
+sp = sub.add_parser("proxy", help="run the ingest proxy"); sp.add_argument("--port", type=int, default=config.PROXY_PORT); sp.set_defaults(f=cmd_proxy)
+sp = sub.add_parser("status", help="account, corpus and live GPU state"); sp.add_argument("--limit-sessions", type=int, default=0); sp.set_defaults(f=cmd_status)
+sp = sub.add_parser("run", help="run a batch now"); sp.add_argument("--fleet", type=int, default=None); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--limit-sessions", type=int, default=0); sp.add_argument("--keep-alive", action="store_true"); sp.set_defaults(f=cmd_run)
+sp = sub.add_parser("report", help="show the last report"); sp.set_defaults(f=cmd_report)
+sp = sub.add_parser("kill", help="cancel every nightshift GPU job"); sp.set_defaults(f=cmd_kill)
+sp = sub.add_parser("schedule", help="run nightly"); sp.add_argument("--at", default="02:00"); sp.set_defaults(f=cmd_sched)
+a = p.parse_args(); a.f(a)
