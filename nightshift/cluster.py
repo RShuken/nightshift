@@ -41,6 +41,9 @@ def build(results, endpoint, timeout=240):
         "max_tokens": 2000, "temperature": 0.1,
         "response_format": {"type": "json_object"},
     }
+    if endpoint.get("model"):
+        body["model"] = endpoint["model"]
+    body["chat_template_kwargs"] = {"enable_thinking": False}
     req = urllib.request.Request(endpoint["base"] + "/v1/chat/completions",
                                  data=json.dumps(body).encode(),
                                  headers=endpoint["headers"], method="POST")

@@ -29,8 +29,29 @@ def cmd_status(a):
 def cmd_run(a):
     from nightshift.batch import run_batch
     out = run_batch(fleet_size=a.fleet, limit_episodes=a.limit or None,
-                    limit_sessions=a.limit_sessions or None, keep_alive=a.keep_alive)
+                    limit_sessions=a.limit_sessions or None, keep_alive=a.keep_alive, day=a.day,
+                    reuse=True if a.reuse else None, endpoint=a.endpoint)
     print(out.get("markdown") or out)
+
+def cmd_warm(a):
+    """Pre-warm a fleet and LEAVE IT UP. Run this before the demo."""
+    from nightshift import config
+    jobs = fleet.cook(n=a.fleet, title_suffix="warm")
+    quorum = max(1, int(a.fleet * 0.6))
+    eps, timings = fleet.wait_ready(jobs, timeout_s=1800, poll_s=10, need=quorum, grace_s=300)
+    if not eps:
+        fleet.teardown(jobs); sys.exit("no nodes came up")
+    fleet.save_pool(eps, jobs)
+    fleet._LIVE.clear()   # deliberately keep them alive
+    print(f"\nWARM: {len(eps)}/{a.fleet} nodes ready "
+          f"({', '.join(f'{v:.0f}s' for v in timings.values())})")
+    for e in eps: print("  ", e["base"])
+    print(f"\ncost while idle: ${0.69*len(eps):.2f}/hr — run './ns kill' when done")
+
+def cmd_pool(a):
+    eps, jobs = fleet.load_pool()
+    print(f"warm pool: {len(eps)} healthy node(s)")
+    for e in eps: print("  ", e["base"])
 
 def cmd_report(a):
     p = config.RUNS / "latest"
@@ -50,7 +71,9 @@ p = argparse.ArgumentParser(prog="ns", description="nightshift — batch LLM obs
 sub = p.add_subparsers(dest="cmd", required=True)
 sp = sub.add_parser("proxy", help="run the ingest proxy"); sp.add_argument("--port", type=int, default=config.PROXY_PORT); sp.set_defaults(f=cmd_proxy)
 sp = sub.add_parser("status", help="account, corpus and live GPU state"); sp.add_argument("--limit-sessions", type=int, default=0); sp.set_defaults(f=cmd_status)
-sp = sub.add_parser("run", help="run a batch now"); sp.add_argument("--fleet", type=int, default=None); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--limit-sessions", type=int, default=0); sp.add_argument("--keep-alive", action="store_true"); sp.set_defaults(f=cmd_run)
+sp = sub.add_parser("run", help="run a batch now"); sp.add_argument("--fleet", type=int, default=None); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--limit-sessions", type=int, default=0); sp.add_argument("--keep-alive", action="store_true"); sp.add_argument("--reuse", action="store_true", help="use the pre-warmed fleet"); sp.add_argument("--endpoint", default=None, help="explicit OpenAI-compatible base URL; provisions no GPUs"); sp.add_argument("--day", default=None); sp.set_defaults(f=cmd_run)
+sp = sub.add_parser("warm", help="pre-warm a fleet and keep it up (do this BEFORE the demo)"); sp.add_argument("--fleet", type=int, default=4); sp.set_defaults(f=cmd_warm)
+sp = sub.add_parser("pool", help="show the warm pool"); sp.set_defaults(f=cmd_pool)
 sp = sub.add_parser("report", help="show the last report"); sp.set_defaults(f=cmd_report)
 sp = sub.add_parser("kill", help="cancel every nightshift GPU job"); sp.set_defaults(f=cmd_kill)
 sp = sub.add_parser("schedule", help="run nightly"); sp.add_argument("--at", default="02:00"); sp.set_defaults(f=cmd_sched)

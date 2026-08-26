@@ -10,7 +10,10 @@ from . import cluster, config, cost, episodes, fleet, judge, report
 
 
 def run_batch(day=None, fleet_size=None, use_claude_code=True,
-              limit_sessions=None, limit_episodes=None, reuse=None, keep_alive=False):
+              limit_sessions=None, limit_episodes=None, reuse=None, keep_alive=False,
+              endpoint=None):
+    """endpoint: an explicit OpenAI-compatible base URL (local model, or a tunnel).
+    When given, no GPUs are provisioned — useful for validating the pipeline."""
     t0 = time.time()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     outdir = config.RUNS / stamp
@@ -28,13 +31,23 @@ def run_batch(day=None, fleet_size=None, use_claude_code=True,
 
     # 2. provision
     jobs = []
-    if reuse:
-        endpoints = reuse
+    if endpoint:
+        endpoints = [{"base": endpoint.rstrip("/"),
+                      "headers": {"Content-Type": "application/json"},
+                      "run_uuid": None}]
+        log(f"using explicit endpoint {endpoints[0]['base']} (no GPUs provisioned)")
+    elif reuse:
+        endpoints, jobs = (reuse, []) if isinstance(reuse, list) else fleet.load_pool()
         log(f"reusing {len(endpoints)} warm node(s)")
+        if not endpoints:
+            return {"error": "no warm nodes — run './ns warm' first"}
+        keep_alive = True
     else:
         n = fleet_size or config.FLEET_SIZE
         jobs = fleet.cook(n=n, title_suffix=stamp[-6:])
-        endpoints, timings = fleet.wait_ready(jobs, timeout_s=1800, poll_s=10, need=1)
+        quorum = max(1, int(n * 0.6))   # don't burst on a fleet of one
+        endpoints, timings = fleet.wait_ready(jobs, timeout_s=1800, poll_s=10,
+                                              need=quorum, grace_s=240)
         log(f"{len(endpoints)}/{n} nodes ready "
             f"({', '.join(f'{v:.0f}s' for v in timings.values())})")
         if not endpoints:

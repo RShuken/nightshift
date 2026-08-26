@@ -21,7 +21,7 @@ MAX_TIMEOUT_START_MS = 30 * 60 * 1000
 MAX_TIMEOUT_ASSIGN_MS = 10 * 60 * 1000
 
 # --- Judge ---
-JUDGE_MAX_TOKENS = 700
+JUDGE_MAX_TOKENS = 900
 JUDGE_TEMPERATURE = 0.0
 JUDGE_CTX = 32768
 EPISODE_CHAR_BUDGET = 24000   # keep an episode comfortably inside ctx
@@ -29,3 +29,17 @@ EPISODE_CHAR_BUDGET = 24000   # keep an episode comfortably inside ctx
 # --- Ingest proxy ---
 PROXY_PORT = int(os.environ.get("NIGHTSHIFT_PROXY_PORT", "8788"))
 UPSTREAM_BASE = os.environ.get("NIGHTSHIFT_UPSTREAM", "https://api.openai.com")
+
+# --- llama.cpp judge container ---
+LLAMA_IMAGE = "dispersednetwork/llama.cpp_accesstoken_preload"
+LLAMA_N_PARALLEL = 4      # concurrent slots per GPU — the throughput lever
+LLAMA_CTX = 32768         # split across slots: 8k per slot, episodes are ~6k
+LLAMA_ENV = {
+    "LLAMA_ARG_PORT": "8080",
+    "LLAMA_ARG_HOST": "127.0.0.1",
+    "LLAMA_ARG_MODELS_DIR": "/opt/dispersedworker/models/",
+    "LLAMA_ARG_SPEC_DRAFT_N_MAX": "2",
+    "LLAMA_ARG_CACHE_TYPE_K": "q4_0",
+    "LLAMA_ARG_CACHE_TYPE_V": "q4_0",
+    "LLAMA_ARG_FLASH_ATTN": "1",
+}

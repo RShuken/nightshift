@@ -54,19 +54,58 @@ def _prompt(ep):
             f"Evaluate this episode.")
 
 
-def _call(ep_url, headers, episode, timeout=180):
-    body = {
-        "messages": [{"role": "system", "content": SYSTEM},
-                     {"role": "user", "content": _prompt(episode)}],
-        "max_tokens": config.JUDGE_MAX_TOKENS,
-        "temperature": config.JUDGE_TEMPERATURE,
-        "response_format": {"type": "json_object", "schema": SCHEMA},
-    }
+# llama.cpp has shipped three different spellings of constrained decoding.
+# Try strongest first, degrade on 4xx, and always keep the prompt-level fallback.
+_FORMATS = [
+    {"type": "json_schema", "json_schema": {"name": "judgment", "schema": SCHEMA}},
+    {"type": "json_object", "schema": SCHEMA},
+    {"type": "json_object"},
+    None,
+]
+_FMT_LOCK = threading.Lock()
+_FMT_IDX = [0]
+
+
+def _post(ep_url, headers, body, timeout):
     req = urllib.request.Request(ep_url + "/v1/chat/completions",
                                  data=json.dumps(body).encode(),
                                  headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        out = json.loads(r.read())
+        return json.loads(r.read())
+
+
+def _call(ep_url, headers, episode, timeout=180, model=None):
+    base = {
+        "messages": [{"role": "system", "content": SYSTEM},
+                     {"role": "user", "content": _prompt(episode)}],
+        "max_tokens": config.JUDGE_MAX_TOKENS,
+        "temperature": config.JUDGE_TEMPERATURE,
+    }
+    if model:
+        base["model"] = model     # required by llama.cpp router mode
+    # Qwen3 is a reasoning model: left on, it spends the whole token budget on
+    # hidden thinking and returns EMPTY content. Off, it is ~5x faster and ~5x
+    # cheaper per judgment, and constrained decoding gives us the JSON directly.
+    base["chat_template_kwargs"] = {"enable_thinking": False}
+    start = _FMT_IDX[0]
+    out = None
+    for i in range(start, len(_FORMATS)):
+        body = dict(base)
+        if _FORMATS[i] is not None:
+            body["response_format"] = _FORMATS[i]
+        try:
+            out = _post(ep_url, headers, body, timeout)
+            if i != _FMT_IDX[0]:
+                with _FMT_LOCK:
+                    _FMT_IDX[0] = i          # remember what this server accepts
+                print(f"[judge] response_format -> {_FORMATS[i]}", flush=True)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code >= 500 or i == len(_FORMATS) - 1:
+                raise
+            continue
+    if out is None:
+        raise RuntimeError("all response_format variants rejected")
     text = out["choices"][0]["message"]["content"]
     usage = out.get("usage", {})
     try:
@@ -94,14 +133,14 @@ def run(episodes, endpoints, max_attempts=3, progress_every=10):
     total = len(episodes)
 
     def worker(slot):
-        url, headers = slot["base"], slot["headers"]
+        url, headers, model = slot["base"], slot["headers"], slot.get("model")
         while True:
             try:
                 episode, attempt = q.get_nowait()
             except queue.Empty:
                 return
             try:
-                verdict, usage = _call(url, headers, episode)
+                verdict, usage = _call(url, headers, episode, model=model)
                 rec = {**{k: episode[k] for k in
                           ("id", "source", "session", "project", "request")},
                        "chars": episode.get("chars"),
