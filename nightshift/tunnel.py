@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 KEY = Path.home() / ".ssh" / "nightshift"
+KNOWN_HOSTS = Path.home() / ".ssh" / "nightshift_known_hosts"
 REMOTE_HOST, REMOTE_PORT = "127.0.0.1", 8080
 _PROCS = []
 
@@ -26,6 +27,7 @@ def _free_port():
 
 
 def ensure_key():
+    KNOWN_HOSTS.touch(mode=0o600, exist_ok=True)
     if not KEY.exists():
         KEY.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["ssh-keygen", "-t", "ed25519", "-f", str(KEY), "-N", "",
@@ -40,8 +42,11 @@ def open_tunnel(hostname, port, user="duser", local_port=None, timeout=45):
         "ssh", "-i", str(KEY), "-p", str(port), f"{user}@{hostname}",
         "-N", "-T",
         "-L", f"{local_port}:{REMOTE_HOST}:{REMOTE_PORT}",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
+        # accept-new + a persistent per-fleet known_hosts: first sight of a node
+        # is trusted, but a CHANGED key afterwards fails loudly instead of being
+        # silently accepted the way StrictHostKeyChecking=no would.
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={KNOWN_HOSTS}",
         "-o", "ExitOnForwardFailure=yes",
         "-o", "ServerAliveInterval=15",
         "-o", "ConnectTimeout=20",

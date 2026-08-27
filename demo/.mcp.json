@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "nightshift": {
+      "type": "stdio",
+      "command": "/Users/shuken/AI/dispered/mcp_launch.sh",
+      "args": [],
+      "env": {}
+    }
+  }
+}

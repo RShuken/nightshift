@@ -58,20 +58,34 @@ def run_batch(day=None, fleet_size=None, use_claude_code=True,
         # 3. burst
         results, stats = judge.run(eps, endpoints)
         log(f"judged {stats['judged']}/{stats['episodes']} in {stats['elapsed_s']}s")
+        # Persist FIRST. Everything after this is cheap post-processing, and none
+        # of it is worth losing a paid-for GPU run to.
+        (outdir / "results.json").write_text(json.dumps(results, indent=1, default=str))
+        (outdir / "stats.json").write_text(json.dumps(stats, indent=1, default=str))
+        log(f"raw results saved -> {outdir}/results.json")
 
         # 4. cluster
-        try:
-            taxonomy = cluster.build(results, endpoints[0])
-            log(f"{len(taxonomy.get('clusters', []))} failure modes")
-        except Exception as e:
-            log(f"clustering failed: {type(e).__name__}: {e}")
-            taxonomy = {"clusters": [], "error": str(e)}
+        # Nodes die mid-run. Try every endpoint before giving up on the taxonomy.
+        taxonomy = {"clusters": []}
+        for ep in endpoints:
+            try:
+                taxonomy = cluster.build(results, ep)
+                log(f"{len(taxonomy.get('clusters', []))} failure modes")
+                break
+            except Exception as e:
+                log(f"clustering failed on {ep['base']}: {type(e).__name__}")
+                taxonomy = {"clusters": [], "error": str(e)}
     finally:
         if jobs and not keep_alive:
             fleet.teardown(jobs)
 
     # 5. report
-    c = cost.for_jobs(set(jobs), stats) if jobs else cost.for_jobs(set(), stats)
+    try:
+        c = cost.for_jobs(set(jobs), stats)
+    except Exception as e:
+        log(f"cost unavailable ({type(e).__name__}) — reporting without it")
+        c = {"usd": 0.0, "gpu_hours": 0.0, "per_episode": 0.0, "hourly_rate_usd": 0.69,
+             "frontier_equiv_usd": None, "savings_multiple": None, "source": "unavailable"}
     summary = report.summarize(results, stats, taxonomy, c)
     summary["wall_clock_total_s"] = round(time.time() - t0, 1)
 

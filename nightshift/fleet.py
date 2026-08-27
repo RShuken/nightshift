@@ -103,9 +103,29 @@ def endpoint_of(run):
     """
     from . import tunnel
     urls = run.get("node_urls") or []
-    ssh = next((u for u in urls if u.get("description") == "ssh"), None) or \
-          next((u for u in urls if int(u.get("port", 0)) and
-                str(u.get("protocol", "")).lower() == "tcp"), None)
+
+    # Preferred: Dispersed proxies the published container port straight to a
+    # public host:port. No tunnel, no child process, nothing to die mid-demo.
+    http = next((u for u in urls
+                 if str(u.get("description")) == str(config.CONTAINER_PORT)), None)
+    if http:
+        scheme = "https" if http.get("tls") else "http"
+        ep = {"base": f"{scheme}://{http['hostname']}:{int(http['port'])}",
+              "headers": {"Content-Type": "application/json"},
+              "run_uuid": run.get("uuid"), "direct": True}
+        toks = run.get("container_access_tokens") or []
+        if toks:
+            tok = toks[0].get("token") if isinstance(toks[0], dict) else toks[0]
+            if tok:
+                import base64 as _b64
+                ep["headers"]["Authorization"] = "Basic " + _b64.b64encode(
+                    f"duser:{tok}".encode()).decode()
+        if health(ep):
+            discover_model(ep)
+            return ep
+        _log(f"direct http {ep['base']} not answering — falling back to ssh tunnel")
+
+    ssh = next((u for u in urls if u.get("description") == "ssh"), None)
     if not ssh:
         return None
     try:
@@ -265,8 +285,9 @@ def save_pool(endpoints, jobs):
     import json as _json
     (config.DATA / "fleet.json").write_text(_json.dumps({
         "jobs": jobs,
-        "nodes": [{"ssh": e.get("ssh"), "run_uuid": e.get("run_uuid")}
-                  for e in endpoints if e.get("ssh")],
+        "nodes": [{"ssh": e.get("ssh"), "direct": e.get("base") if e.get("direct") else None,
+                   "model": e.get("model"), "run_uuid": e.get("run_uuid")}
+                  for e in endpoints if e.get("ssh") or e.get("direct")],
     }, indent=1))
 
 
@@ -281,6 +302,14 @@ def load_pool(verify=True):
     jobs = d.get("jobs", [])
     eps = []
     for n in d.get("nodes", []):
+        if n.get("direct"):
+            ep = {"base": n["direct"], "headers": {"Content-Type": "application/json"},
+                  "run_uuid": n.get("run_uuid"), "direct": True, "model": n.get("model")}
+            if not verify or health(ep):
+                discover_model(ep)
+                eps.append(ep)
+                continue
+            _log(f"warm pool: direct {n['direct']} dead, trying ssh")
         if not n.get("ssh"):
             continue
         host, _, port = n["ssh"].rpartition(":")

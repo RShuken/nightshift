@@ -50,9 +50,23 @@ def markdown(s):
     c = s["cost"]
     A(f"- **${c['usd']:.2f}** total  (${c['per_episode']:.5f}/episode, "
       f"{c['gpu_hours']:.2f} GPU-hours)")
-    if c.get("frontier_equiv_usd"):
-        A(f"- frontier-API equivalent ≈ **${c['frontier_equiv_usd']:.2f}** "
-          f"→ **{c['savings_multiple']:.0f}× cheaper**")
+    if c.get("comparison"):
+        A("")
+        A("## Same corpus on a hosted judge")
+        A("")
+        A("| judge tier | would cost | vs Nightshift |")
+        A("|---|---|---|")
+        for row in c["comparison"]:
+            ratio = row.get("ratio")
+            if ratio and ratio >= 1:
+                v = f"**{ratio:.1f}x cheaper**"
+            elif ratio:
+                v = f"{1/ratio:.1f}x _more expensive_"
+            else:
+                v = "-"
+            A(f"| {row['tier']} | ${row['hosted_usd']:.2f} | {v} |")
+        A("")
+        A("_GPU-hours are fixed: more nodes buys speed, not cost._")
     A(f"\n## Scores\n")
     A("| dimension | mean | scoring ≤2 |")
     A("|---|---|---|")
@@ -114,10 +128,25 @@ def html_report(s, results):
                        for p, k in s["worst_projects"])
 
     savings = ""
-    if c.get("frontier_equiv_usd"):
-        savings = (f"""<div class="savings"><strong>${c['usd']:.2f}</strong> on Dispersed vs
-          <strong>${c['frontier_equiv_usd']:.2f}</strong> on a frontier API —
-          <em>{c['savings_multiple']:.0f}× cheaper</em> for the same corpus.</div>""")
+    if c.get("comparison"):
+        rows = ""
+        for row in c["comparison"]:
+            ratio = row.get("ratio")
+            if ratio and ratio >= 1:
+                v = f"{ratio:.1f}\u00d7 cheaper"
+            elif ratio:
+                v = f"{1/ratio:.1f}\u00d7 more"
+            else:
+                v = "\u2014"
+            rows += (f"<tr><td>{esc(row['tier'])}</td>"
+                     f"<td class='num'>${row['hosted_usd']:.2f}</td>"
+                     f"<td class='num'>{v}</td></tr>")
+        savings = (f"<div class=\"savings\"><strong>${c['usd']:.2f}</strong> spent on rented GPUs. "
+                   f"The same corpus judged by a hosted model:"
+                   f"<table style=\"margin-top:.7rem\"><tr><th>judge tier</th>"
+                   f"<th class=\"num\">cost</th><th class=\"num\">vs us</th></tr>{rows}</table>"
+                   f"<p style=\"margin:.7rem 0 0;font-size:.85rem\">GPU-hours are fixed \u2014 "
+                   f"more nodes buys speed, not cost.</p></div>")
 
     return f"""<title>Nightshift Batch Report</title>
 <style>

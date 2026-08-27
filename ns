@@ -53,6 +53,59 @@ def cmd_pool(a):
     print(f"warm pool: {len(eps)} healthy node(s)")
     for e in eps: print("  ", e["base"])
 
+def cmd_show(a):
+    """Show the raw material: what actually gets shipped to the GPUs."""
+    from nightshift import store, episodes
+    import textwrap
+    days = store.days()
+    print("\033[1mCAPTURED TRAFFIC\033[0m  (data/traces/)")
+    if not days:
+        print("  nothing captured yet — run ./ns proxy")
+    for d in days:
+        print(f"  {d}.jsonl    {sum(1 for _ in open(store.path_for(d))):>5} LLM calls")
+    print()
+    eps = episodes.collect(day=a.day, use_claude_code=not a.day,
+                           limit_sessions=a.limit_sessions or None)
+    print(f"\033[1mTASK EPISODES\033[0m  {len(eps)} judgeable units")
+    projects = {}
+    for e in eps:
+        projects[e["project"]] = projects.get(e["project"], 0) + 1
+    for k, v in sorted(projects.items(), key=lambda x: -x[1])[:8]:
+        print(f"  {v:>5}  {k}")
+    print()
+    for e in eps[:a.n]:
+        print("\033[1m" + "─" * 74 + "\033[0m")
+        print(f"\033[1mid\033[0m       {e['id']}")
+        print(f"\033[1mproject\033[0m  {e['project']}   ({e['n_turns']} turns, {e['chars']} chars)")
+        print(f"\033[1mrequest\033[0m  {textwrap.shorten(e['request'], 300)}")
+        body = e["transcript"][:a.chars].replace("\n", "\n         ")
+        print(f"\033[1mtrace\033[0m    {body}...")
+    print("\033[1m" + "─" * 74 + "\033[0m")
+    print(f"\nEach of these {len(eps)} episodes becomes ONE judged GPU call.")
+
+
+def cmd_demo(a):
+    """Scripted walkthrough: corpus -> fleet -> burst -> report."""
+    import subprocess, sys as _s, time
+    R = "/Users/shuken/AI/dispered"
+    def step(n, title):
+        print(f"\n\033[1;7m  {n}  {title}  \033[0m\n")
+        if not a.no_pause:
+            try: input("      [enter to run] ")
+            except EOFError: pass
+    step(1, "THE RAW MATERIAL — what we captured")
+    subprocess.run([_s.executable, f"{R}/ns", "show", "--n", "2", "--chars", "700"])
+    step(2, "THE FLEET — GPUs rented on the Dispersed network")
+    subprocess.run([_s.executable, f"{R}/ns", "pool"])
+    step(3, "THE BURST — judge every episode, in parallel, on rented GPUs")
+    cmd = [_s.executable, f"{R}/ns", "run", "--reuse"]
+    if a.limit: cmd += ["--limit", str(a.limit)]
+    if a.day: cmd += ["--day", a.day]
+    subprocess.run(cmd)
+    step(4, "THE REPORT")
+    subprocess.run([_s.executable, f"{R}/ns", "report"])
+
+
 def cmd_report(a):
     p = config.RUNS / "latest"
     if not p.exists(): sys.exit("no runs yet")
@@ -74,6 +127,8 @@ sp = sub.add_parser("status", help="account, corpus and live GPU state"); sp.add
 sp = sub.add_parser("run", help="run a batch now"); sp.add_argument("--fleet", type=int, default=None); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--limit-sessions", type=int, default=0); sp.add_argument("--keep-alive", action="store_true"); sp.add_argument("--reuse", action="store_true", help="use the pre-warmed fleet"); sp.add_argument("--endpoint", default=None, help="explicit OpenAI-compatible base URL; provisions no GPUs"); sp.add_argument("--day", default=None); sp.set_defaults(f=cmd_run)
 sp = sub.add_parser("warm", help="pre-warm a fleet and keep it up (do this BEFORE the demo)"); sp.add_argument("--fleet", type=int, default=4); sp.set_defaults(f=cmd_warm)
 sp = sub.add_parser("pool", help="show the warm pool"); sp.set_defaults(f=cmd_pool)
+sp = sub.add_parser("show", help="show the corpus that gets shipped to the GPUs"); sp.add_argument("--n", type=int, default=3); sp.add_argument("--chars", type=int, default=900); sp.add_argument("--day", default=None); sp.add_argument("--limit-sessions", type=int, default=0); sp.set_defaults(f=cmd_show)
+sp = sub.add_parser("demo", help="scripted walkthrough for presenting"); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--day", default=None); sp.add_argument("--no-pause", action="store_true"); sp.set_defaults(f=cmd_demo)
 sp = sub.add_parser("report", help="show the last report"); sp.set_defaults(f=cmd_report)
 sp = sub.add_parser("kill", help="cancel every nightshift GPU job"); sp.set_defaults(f=cmd_kill)
 sp = sub.add_parser("schedule", help="run nightly"); sp.add_argument("--at", default="02:00"); sp.set_defaults(f=cmd_sched)

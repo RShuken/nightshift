@@ -96,8 +96,13 @@ def auth_headers(method, pathname, query=None, body=None, public_key=None, secre
     }, canonical_string
 
 
-def request(method, pathname, query=None, body=None, timeout=30, retries=3):
-    """Signed request with retry. Nonce is regenerated per attempt (they're single-use)."""
+def request(method, pathname, query=None, body=None, timeout=20, retries=4):
+    """Signed request with exponential backoff.
+
+    Nonces are single-use, so each attempt re-signs. Shorter default timeout +
+    more attempts beats one long hang: the control plane occasionally stalls a
+    connection under load and a fresh connection succeeds immediately.
+    """
     last = None
     for attempt in range(retries):
         try:
@@ -105,7 +110,7 @@ def request(method, pathname, query=None, body=None, timeout=30, retries=3):
         except Exception as e:
             last = e
             if attempt < retries - 1:
-                time.sleep(1.5 * (attempt + 1))
+                time.sleep(min(2 ** attempt, 8))
     raise last
 
 
