@@ -23,6 +23,9 @@ Design notes (why the records look the way they do):
     infer them. That is the whole point of the corpus.
 """
 from __future__ import annotations
+import sys as _sys
+from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 
 import argparse
 import collections
@@ -33,9 +36,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-TRACES = ROOT / "data" / "traces"
-GROUND_TRUTH = ROOT / "data" / "ground_truth.json"
+# One source of truth for data paths: the package config. Never derive them from
+# this file's own location — moving the script must not move the corpus.
+from nightshift import config as _cfg
+ROOT = _cfg.ROOT
+TRACES = _cfg.TRACES
+GROUND_TRUTH = _cfg.DATA / "ground_truth.json"
 
 SEED = 20260826
 DAYS = ["2026-08-23", "2026-08-24", "2026-08-25"]   # 3, 2, 1 days before 2026-08-26

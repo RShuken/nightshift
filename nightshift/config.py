@@ -10,7 +10,6 @@ for _d in (DATA, TRACES, RUNS):
     _d.mkdir(parents=True, exist_ok=True)
 
 # --- Dispersed ---
-LLAMACPP_RECIPE_UUID = "01a0114e-e7f8-4e76-a07a-f09fca41e2be"
 GPU_5090_UUID = "0198ac1c-7063-4be8-bb94-57a5bd83548e"
 FLEET_SIZE = int(os.environ.get("NIGHTSHIFT_FLEET_SIZE", "8"))
 CONTAINER_PORT = 5000

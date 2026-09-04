@@ -4,6 +4,9 @@ The mock corpus has six modes planted in it, recorded in data/ground_truth.json.
 None of the mode names appear literally in the trace text, so the judge has to
 infer them. This scores recall per mode and reports the confusion honestly.
 """
+import sys as _sys
+from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 import json
 import sys
 from collections import Counter, defaultdict

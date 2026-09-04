@@ -30,6 +30,7 @@ def cmd_run(a):
     from nightshift.batch import run_batch
     out = run_batch(fleet_size=a.fleet, limit_episodes=a.limit or None,
                     limit_sessions=a.limit_sessions or None, keep_alive=a.keep_alive, day=a.day,
+                    use_claude_code=not a.day,   # --day = that day's captured traffic only
                     reuse=True if a.reuse else None, endpoint=a.endpoint)
     print(out.get("markdown") or out)
 
@@ -87,7 +88,7 @@ def cmd_show(a):
 def cmd_demo(a):
     """Scripted walkthrough: corpus -> fleet -> burst -> report."""
     import subprocess, sys as _s, time
-    R = "/Users/shuken/AI/dispered"
+    R = str(Path(__file__).resolve().parent)
     def step(n, title):
         print(f"\n\033[1;7m  {n}  {title}  \033[0m\n")
         if not a.no_pause:

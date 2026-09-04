@@ -83,12 +83,6 @@ def cook(n=None, title_suffix="", n_parallel=None, ctx=None):
     return uuids
 
 
-def job_runs(job_uuid):
-    status, payload = request("GET", "/v1/job-runs", query={"limit": "50"})
-    if status != 200:
-        return []
-    return [r for r in payload.get("data", []) if r.get("job_uuid") == job_uuid]
-
 
 def all_runs(limit=50):
     status, payload = request("GET", "/v1/job-runs", query={"limit": str(limit)})

@@ -1,4 +1,7 @@
 """Rebuild the report from saved results — recovers a run whose post-processing died."""
+import sys as _sys
+from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 import json, sys
 from pathlib import Path
 from nightshift import cluster, config, cost, fleet, report

@@ -25,7 +25,7 @@ Five stages, all real, all built:
 ## Everything runs from the repo root
 
 ```
-/Users/shuken/AI/dispered/ns   ← the CLI. Always use this absolute path.
+./ns   ← the CLI. Always use this absolute path.
 ```
 
 | Command | What it shows |
@@ -74,8 +74,8 @@ these"* — a correctness claim with a receipt, not a vibe.
 
 **Before presenting** (cold start is ~9 min — the judge image is 22.7GB):
 ```bash
-/Users/shuken/AI/dispered/ns warm --fleet 6
-/Users/shuken/AI/dispered/ns pool
+./ns warm --fleet 6
+./ns pool
 ```
 
 **The four beats:**

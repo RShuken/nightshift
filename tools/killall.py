@@ -1,4 +1,7 @@
 """Cancel every nightshift job, retrying until the API confirms none are alive."""
+import sys as _sys
+from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 import time
 from nightshift.dispersed import request
 from nightshift import config
