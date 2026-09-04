@@ -107,6 +107,37 @@ def cmd_demo(a):
     subprocess.run([_s.executable, f"{R}/ns", "report"])
 
 
+def cmd_failures(a):
+    """The receipts: failing episodes from the last run, with the judge's evidence."""
+    import json, textwrap
+    from nightshift import config
+    latest = config.RUNS / "latest"
+    if not latest.exists(): sys.exit("no runs yet — ./ns run first")
+    d = Path(latest.read_text().strip())
+    rows = [r for r in json.loads((d / "results.json").read_text()) if r.get("verdict") == "fail"]
+    if not rows:
+        print("no failures in the last run"); return
+    if not a.cluster:
+        by = {}
+        for r in rows: by[r.get("cluster") or r.get("failure_label") or "?"] = by.get(r.get("cluster") or r.get("failure_label") or "?", 0) + 1
+        print(f"\033[1m{len(rows)} failing episodes\033[0m in {len(by)} modes — pick one with --cluster <substring>\n")
+        for k, v in sorted(by.items(), key=lambda x: -x[1]): print(f"  {v:>4}  {k}")
+        rows = rows[:a.n]; print(f"\n\033[1mfirst {len(rows)}:\033[0m")
+    else:
+        q = a.cluster.lower()
+        rows = [r for r in rows if q in (r.get("cluster") or "").lower() or q in (r.get("failure_label") or "").lower()][:a.n]
+        if not rows: sys.exit(f"nothing matches {a.cluster!r} — run without --cluster to list modes")
+    for r in rows:
+        sc = r.get("scores") or {}
+        print("\033[1m" + "\u2500" * 74 + "\033[0m")
+        print(f"\033[1m{r.get('id')}\033[0m   {r.get('project')}")
+        print(f"  mode      {r.get('cluster') or '-'}   \033[2m({r.get('failure_label')})\033[0m")
+        print(f"  scores    IF {sc.get('instruction_following','?')}  correct {sc.get('correctness','?')}  efficient {sc.get('efficiency','?')}")
+        print(f"  asked     {textwrap.shorten(str(r.get('request','')), 160)}")
+        print(f"  evidence  {textwrap.fill(str(r.get('evidence','')), 70, subsequent_indent=' '*12)}")
+    print("\033[1m" + "\u2500" * 74 + "\033[0m")
+
+
 def cmd_report(a):
     p = config.RUNS / "latest"
     if not p.exists(): sys.exit("no runs yet")
@@ -130,6 +161,7 @@ sp = sub.add_parser("warm", help="pre-warm a fleet and keep it up (do this BEFOR
 sp = sub.add_parser("pool", help="show the warm pool"); sp.set_defaults(f=cmd_pool)
 sp = sub.add_parser("show", help="show the corpus that gets shipped to the GPUs"); sp.add_argument("--n", type=int, default=3); sp.add_argument("--chars", type=int, default=900); sp.add_argument("--day", default=None); sp.add_argument("--limit-sessions", type=int, default=0); sp.set_defaults(f=cmd_show)
 sp = sub.add_parser("demo", help="scripted walkthrough for presenting"); sp.add_argument("--limit", type=int, default=0); sp.add_argument("--day", default=None); sp.add_argument("--no-pause", action="store_true"); sp.set_defaults(f=cmd_demo)
+sp = sub.add_parser("failures", help="failing episodes from the last run, with evidence"); sp.add_argument("--cluster", default=None, help="substring of a failure mode name"); sp.add_argument("--n", type=int, default=5); sp.set_defaults(f=cmd_failures)
 sp = sub.add_parser("report", help="show the last report"); sp.set_defaults(f=cmd_report)
 sp = sub.add_parser("kill", help="cancel every nightshift GPU job"); sp.set_defaults(f=cmd_kill)
 sp = sub.add_parser("schedule", help="run nightly"); sp.add_argument("--at", default="02:00"); sp.set_defaults(f=cmd_sched)

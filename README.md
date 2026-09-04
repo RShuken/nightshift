@@ -80,6 +80,33 @@ python3 tools/mockgen.py        # generate the 1052-episode demo corpus
 No GPUs? `./ns run --endpoint http://127.0.0.1:8081` runs the whole pipeline against any
 local OpenAI-compatible server — see [`LOCAL_JUDGE.md`](LOCAL_JUDGE.md).
 
+## Try it on your own data
+
+Two corpora out of the box, and you don't need GPUs for either — point the pipeline at
+any local OpenAI-compatible server with `--endpoint` (setup in [`LOCAL_JUDGE.md`](LOCAL_JUDGE.md)).
+
+**Mock corpus — 1052 episodes, six planted failure modes, ground truth included:**
+```bash
+python3 tools/mockgen.py
+./ns run --endpoint http://127.0.0.1:8081 --day 2026-08-25 --limit 20
+python3 tools/validate.py          # did it recover what we planted?
+```
+
+**Your own Claude Code history** — Nightshift reads `~/.claude/projects/**/*.jsonl` and
+splits every session into task episodes automatically. No export step:
+```bash
+./ns show                          # how many episodes you have, by project
+./ns run --endpoint http://127.0.0.1:8081 --limit 20
+./ns report                        # how your agent fails, ranked
+./ns failures                      # the receipts: failing episodes with evidence
+./ns failures --cluster halluc     # drill into one failure mode
+```
+
+> [!TIP]
+> On real transcripts a 3B local model gives directionally-right verdicts; the 27B fleet
+> model is a different tier. For a serious read on your own history, `./ns warm` and
+> drop the `--endpoint`. Nothing about the corpus changes — only who judges it.
+
 ## Does it actually work?
 
 The demo corpus has **six failure modes deliberately planted** in it, recorded in
