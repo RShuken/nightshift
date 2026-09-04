@@ -122,7 +122,7 @@ config:
 ---
 xychart-beta
     title "Recall per planted failure mode (%)"
-    x-axis ["hallucinated source", "ignored constraint", "wrong question", "unsafe advice", "tool loop", "truncated"]
+    x-axis ["halluc. source", "ignored constr.", "wrong question", "unsafe advice", "tool loop", "truncated"]
     y-axis 0 --> 100
     bar [100, 100, 100, 100, 100, 76]
 ```
