@@ -22,6 +22,10 @@ try: c = cost.for_jobs(set(jobs), stats)
 except Exception: c = {"usd":0.0,"gpu_hours":0.0,"per_episode":0.0,"hourly_rate_usd":0.69,
                        "frontier_equiv_usd":None,"savings_multiple":None,"source":"unavailable"}
 s = report.summarize(results, stats, tax, c)
+# Write results.json back too: cluster.build() stamped a `cluster` on every failing
+# row, and summary.json is derived from the same pass. If only one is written the
+# two drift apart and `ns report` disagrees with `ns failures`.
+(d/"results.json").write_text(json.dumps(results, indent=1, default=str))
 (d/"summary.json").write_text(json.dumps(s, indent=1, default=str))
 (d/"report.md").write_text(report.markdown(s))
 (d/"report.html").write_text(report.html_report(s, results))
